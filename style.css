@@ -616,7 +616,7 @@ body::before {
 .btn-primary:hover { transform: scale(1.05); }
 
 /* ============================================
-   لوحات المدربين (الزوايا الأربعة)
+   لوحات المدربين (الزوايا الأربعة) - تحسين قراءة النصوص
 ============================================ */
 .coach-panels {
     position: fixed;
@@ -643,6 +643,9 @@ body::before {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    /* إضافة توجيه النص للعربي */
+    direction: rtl;
+    text-align: right;
 }
 
 /* الزوايا */
@@ -651,21 +654,27 @@ body::before {
 .coach-panel[data-index="2"] { bottom: 18px; left: 18px; }  /* أسفل يسار */
 .coach-panel[data-index="3"] { top: 75px; left: 18px; }     /* أعلى يسار */
 
-.coach-panel .coach-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 0.8em;
+/* تعديل محاذاة النص حسب الزاوية لضمان القراءة */
+/* الزوايا اليمنى (0 و 1) - النص يكون من اليمين */
+.coach-panel[data-index="0"] .coach-header,
+.coach-panel[data-index="1"] .coach-header {
+    text-align: right;
 }
-.coach-panel .coach-name { font-weight: 700; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.coach-panel .coach-budget { color: var(--gold); font-weight: 700; font-size: 0.85em; }
+/* الزوايا اليسرى (2 و 3) - النص يكون من اليسار (لكن مع RTL يبقى طبيعي) */
+.coach-panel[data-index="2"] .coach-header,
+.coach-panel[data-index="3"] .coach-header {
+    text-align: right; /* مع RTL يفضل يبقى right */
+}
 
+/* الأزرار في كل اللوحات تكون في نفس الاتجاه */
 .coach-panel .coach-buttons {
     display: flex;
     gap: 5px;
     flex-wrap: wrap;
     margin: 4px 0;
+    justify-content: flex-start;
 }
+
 .coach-panel .coach-buttons button {
     flex: 1;
     min-width: 32px;
@@ -678,6 +687,7 @@ body::before {
     transition: all 0.2s ease;
     color: white;
 }
+
 .coach-panel .coach-buttons button:hover { transform: scale(1.08); }
 .coach-panel .coach-buttons button:active { transform: scale(0.95); }
 
@@ -702,6 +712,7 @@ body::before {
     margin-top: 4px;
     max-height: 60px;
     overflow-y: auto;
+    justify-content: flex-start;
 }
 .coach-panel .coach-players .player-tag {
     background: rgba(255,255,255,0.06);
@@ -745,6 +756,7 @@ body::before {
     padding: 16px;
     border: 1px solid var(--glass-border);
     transition: var(--transition);
+    position: relative;
 }
 
 .result-card.winner {
