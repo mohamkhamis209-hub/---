@@ -1,4 +1,4 @@
-// script.js - النسخة النهائية مع الزوايا
+// script.js - النسخة النهائية مع توزيع عادي/ضعيف على الخاسرين فقط
 let gameState = {};
 
 // ===== بدء اللعبة =====
@@ -71,6 +71,7 @@ function loadAuction() {
     }
     if (!gameState.endCount) gameState.endCount = 0;
     if (!gameState.allEnded) gameState.allEnded = false;
+    if (!gameState.remainingNormals) gameState.remainingNormals = [];
     if (!gameState.remainingVeryWeak) gameState.remainingVeryWeak = [];
 
     updateAuctionUI();
@@ -80,25 +81,16 @@ function loadAuction() {
 function updateAuctionUI() {
     const round = gameState.round;
     const legends = gameState.remainingLegends;
-    const normals = gameState.remainingNormals;
-    const totalPlayers = legends.length + normals.length;
+    const totalPlayers = legends.length;
 
     document.getElementById('roundInfo').textContent = `${round + 1} / ${totalPlayers}`;
 
     let player = null;
-    let isLegend = false;
-    if (gameState.phase === 'legend' && round < legends.length) {
+    if (round < legends.length) {
         player = legends[round];
-        isLegend = true;
-    } else if (gameState.phase === 'normal') {
-        const idx = round - legends.length;
-        if (idx < normals.length) {
-            player = normals[idx];
-            isLegend = false;
-        }
     }
     if (player) {
-        displayPlayer(player, isLegend);
+        displayPlayer(player, true);
     }
 
     const highest = getHighestBid();
@@ -147,26 +139,19 @@ function displayPlayer(player, isLegend) {
     if (isLegend) {
         badge.textContent = '⭐ أسطورة';
         badge.style.display = 'inline-block';
-    } else {
-        badge.textContent = '🟢 عادي';
-        badge.style.display = 'inline-block';
     }
 }
 
-// ===== إنشاء لوحات المدربين (الزوايا) =====
+// ===== إنشاء لوحات المدربين =====
 function renderCoachPanels() {
     const container = document.getElementById('coachPanels');
-    // إزالة اللوحات القديمة
     const oldPanels = container.querySelectorAll('.coach-panel');
     oldPanels.forEach(el => el.remove());
 
-    const totalCoaches = gameState.coaches.length;
-
     gameState.coaches.forEach((coach, idx) => {
-        // إنشاء اللوحة
         const panel = document.createElement('div');
         panel.className = 'coach-panel';
-        panel.dataset.index = idx; // مهم للزوايا
+        panel.dataset.index = idx;
 
         if (gameState.currentBidder === idx) {
             panel.classList.add('active-panel');
@@ -291,33 +276,30 @@ function endBid(coachIdx) {
     localStorage.setItem('gameState', JSON.stringify(gameState));
 }
 
+// ===== إنهاء المزاد =====
 function endAuction() {
     const round = gameState.round;
-    let player;
+    const legends = gameState.remainingLegends;
 
-    if (gameState.phase === 'legend') {
-        player = gameState.remainingLegends[round];
-    } else {
-        const idx = round - gameState.remainingLegends.length;
-        player = gameState.remainingNormals[idx];
-    }
-
-    if (!player) {
-        nextPlayer();
+    if (round >= legends.length) {
+        // انتهت جميع الأساطير، ننتقل للنتيجة
+        window.location.href = 'result.html';
         return;
     }
 
+    const player = legends[round];
     const highest = getHighestBid();
     let winnerIdx = null;
 
+    // 1. توزيع الأسطورة على الفائز
     if (highest) {
         winnerIdx = highest.coachIdx;
         const winner = gameState.coaches[winnerIdx];
         const price = highest.amount;
         if (winner.budget >= price) {
             winner.budget -= price;
-            winner.team.push({ ...player, price: price, type: gameState.phase });
-            showNotification(`✅ ${winner.name} كسب ${player.name} بـ ${price} مليون (أعلى مزايدة)`);
+            winner.team.push({ ...player, price: price, type: 'legend' });
+            showNotification(`✅ ${winner.name} كسب ${player.name} بـ ${price} مليون`);
         } else {
             showNotification(`❌ ${winner.name} ليس لديه رصيد كافٍ، تم توزيع اللاعب تلقائياً`);
             distributePlayerAutomatically(player);
@@ -328,9 +310,28 @@ function endAuction() {
         winnerIdx = null;
     }
 
+    // 2. توزيع عادي/ضعيف على الخاسرين فقط (كل خاسر ياخد لاعب واحد)
     const losers = gameState.coaches.filter((c, idx) => idx !== winnerIdx);
-    distributeNormalOrWeakToLosers(losers);
+    losers.forEach((coach) => {
+        // لو معاه فلوس (≥ 3) و فيه عادي متبقي → ياخد عادي بـ 3 مليون
+        if (coach.budget >= 3 && gameState.remainingNormals.length > 0) {
+            const p = gameState.remainingNormals.shift();
+            coach.budget -= 3;
+            coach.team.push({ ...p, price: 3, type: 'normal' });
+            showNotification(`🟢 ${coach.name} أخذ ${p.name} (عادي) بـ 3 مليون`);
+        }
+        // لو معوش فلوس أو نفذ العادي → ياخد ضعيف جداً مجاناً
+        else if (gameState.remainingVeryWeak.length > 0) {
+            const p = gameState.remainingVeryWeak.shift();
+            coach.team.push({ ...p, price: 0, type: 'veryWeak' });
+            showNotification(`🔴 ${coach.name} أخذ ${p.name} (ضعيف جداً) مجاناً`);
+        }
+        else {
+            showNotification(`⚠️ لا يوجد لاعبين لتوزيعهم على ${coach.name}`);
+        }
+    });
 
+    // إعادة ضبط الحالة
     gameState.currentBid = 5;
     gameState.currentBidder = null;
     gameState.endCount = 0;
@@ -340,11 +341,9 @@ function endAuction() {
 
     localStorage.setItem('gameState', JSON.stringify(gameState));
 
+    // التحقق من اكتمال التشكيلة
     const allComplete = gameState.coaches.every(coach => coach.team.length >= 11);
-    const legendsLeft = gameState.remainingLegends.length;
-    const normalsLeft = gameState.remainingNormals.length;
-
-    if (allComplete || (legendsLeft === 0 && normalsLeft === 0)) {
+    if (allComplete || gameState.remainingLegends.length === 0) {
         window.location.href = 'result.html';
         return;
     }
@@ -358,7 +357,7 @@ function distributePlayerAutomatically(player) {
     for (let coach of gameState.coaches) {
         if (!coach.hasEnded && coach.budget >= price) {
             coach.budget -= price;
-            coach.team.push({ ...player, price: price, type: gameState.phase });
+            coach.team.push({ ...player, price: price, type: 'auto' });
             showNotification(`⚠️ ${coach.name} أخذ ${player.name} بـ ${price} مليون (تلقائي)`);
             return;
         }
@@ -366,31 +365,15 @@ function distributePlayerAutomatically(player) {
     for (let coach of gameState.coaches) {
         if (coach.budget >= price) {
             coach.budget -= price;
-            coach.team.push({ ...player, price: price, type: gameState.phase });
+            coach.team.push({ ...player, price: price, type: 'auto' });
             showNotification(`⚠️ ${coach.name} أخذ ${player.name} بـ ${price} مليون (تلقائي)`);
             return;
         }
     }
-    showNotification(`❌ لا يوجد مدرب قادر على شراء ${player.name}، تم تخطي اللاعب`);
+    showNotification(`❌ لا يوجد مدرب قادر على شراء ${player.name}`);
 }
 
-function distributeNormalOrWeakToLosers(losers) {
-    losers.forEach((coach) => {
-        if (coach.budget >= 3 && gameState.remainingNormals.length > 0) {
-            const p = gameState.remainingNormals.shift();
-            coach.budget -= 3;
-            coach.team.push({ ...p, price: 3, type: 'normal' });
-            showNotification(`🟢 ${coach.name} أخذ ${p.name} (عادي) بـ 3 مليون`);
-        } else if (gameState.remainingVeryWeak.length > 0) {
-            const p = gameState.remainingVeryWeak.shift();
-            coach.team.push({ ...p, price: 0, type: 'veryWeak' });
-            showNotification(`🔴 ${coach.name} أخذ ${p.name} (ضعيف جداً) مجاناً`);
-        } else {
-            showNotification(`⚠️ لا يوجد لاعبين لتوزيعهم على ${coach.name}`);
-        }
-    });
-}
-
+// ===== باقي الدوال =====
 function showNotification(message) {
     const existing = document.querySelector('.notification-toast');
     if (existing) existing.remove();
@@ -410,13 +393,8 @@ function showNotification(message) {
 function nextPlayer() {
     gameState.round++;
     const legendsLength = gameState.remainingLegends.length;
-    const normalsLength = gameState.remainingNormals.length;
 
-    if (gameState.round < legendsLength) {
-        gameState.phase = 'legend';
-    } else if (gameState.round < legendsLength + normalsLength) {
-        gameState.phase = 'normal';
-    } else {
+    if (gameState.round >= legendsLength) {
         window.location.href = 'result.html';
         return;
     }
